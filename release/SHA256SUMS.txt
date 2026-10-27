@@ -1,1 +1,2 @@
 cd8dd84cde8d616d7a96ded93fd408255d35092f902d525005d57522f08d30bb  resume-pocket-v0.1.0.zip
+9cbce4c6995cc661ed3fb47953e07e0be5d584a8f544c9b9a9caf0a1a950f837  resume-pocket-v0.2.0.zip

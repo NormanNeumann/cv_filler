@@ -6,7 +6,8 @@ export const normalize = (s: string): string => s.normalize('NFKC').toLowerCase(
 export const contextKey = (context: string): string => {
   if (/教育|学历|education|academic/i.test(context)) return 'education';
   if (/项目|project/i.test(context)) return 'project';
-  if (/工作|职业|实习|employment|work|experience/i.test(context)) return 'work';
+  if (/实习|intern/i.test(context)) return 'internship';
+  if (/工作|职业|employment|work|experience/i.test(context)) return 'work';
   return '';
 };
 export const signatureFor = (label: string, context: string): string => `${contextKey(context)}|${normalize(label)}`;
@@ -29,18 +30,31 @@ export const definitions: Definition[] = [
   { label: '教育经历', category: '教育经历', aliases: ['教育经历', '教育背景', 'education', 'education history', 'academic background'], multiline: true },
   { label: '毕业院校', category: '教育经历', aliases: ['毕业院校', '学校', '院校', '学校名称', 'university', 'school', 'institution', 'college'] },
   { label: '专业', category: '教育经历', aliases: ['专业', '所学专业', '专业名称', 'major', 'field of study'] },
+  { label: '成绩', category: '教育经历', aliases: ['成绩', 'GPA', 'CGPA', '绩点', '平均绩点', '均分', '平均分', '学业成绩', '学分绩点', 'grade', 'grades', 'score', 'WAM', 'weighted average mark'] },
+  { label: '学科', category: '教育经历', aliases: ['学科', '学科门类', '学科方向', 'discipline', 'subject', 'subject area'] },
+  { label: '学院', category: '教育经历', aliases: ['学院', '院系', '系别', 'faculty', 'department'] },
+  { label: '核心课程', category: '教育经历', aliases: ['核心课程', '主修课程', '相关课程', '课程', 'coursework', 'relevant coursework', 'courses'] },
+  { label: '教育时间', category: '教育经历', aliases: ['教育时间', '就读时间', '在校时间', '教育起止时间', 'education dates', 'study period'] },
   { label: '最高学历', category: '教育经历', aliases: ['学历', '最高学历', '学位', 'degree', 'highest degree', 'education level'] },
-  { label: '工作经历', category: '工作经历', aliases: ['工作经历', '实习经历', '职业经历', 'work experience', 'employment history', 'work history', 'professional experience'], multiline: true },
+  { label: '工作经历', category: '工作经历', aliases: ['工作经历', '工作经验', '职业经历', 'work experience', 'employment history', 'work history', 'professional experience'], multiline: true },
+  { label: '实习经历', category: '实习经历', aliases: ['实习经历', '实习经验', 'internships', 'internship experience', 'internship history', 'internship'], multiline: true },
   { label: '公司名称', category: '工作经历', aliases: ['公司', '公司名称', '工作单位', 'company', 'company name', 'employer'] },
   { label: '职位名称', category: '工作经历', aliases: ['职位', '职位名称', '岗位', '职务', 'job title', 'position', 'role'] },
-  { label: '项目经历', category: '项目经历', aliases: ['项目经历', '项目经验', 'projects', 'project experience', 'project description'], multiline: true },
+  { label: '项目经历', category: '项目经历', aliases: ['项目经历', '项目经验', 'projects', 'project experience'], multiline: true },
+  { label: '项目名称', category: '项目经历', aliases: ['项目名称', '项目名', '项目标题', 'project name', 'project title'] },
+  { label: '项目职责', category: '项目经历', aliases: ['项目职责', '职责', '项目角色', '担任角色', '我的角色', '角色', 'project role', 'role', 'responsibility', 'responsibilities'] },
+  { label: '项目时间', category: '项目经历', aliases: ['项目时间', '项目周期', '项目起止时间', '起止时间', '项目日期', 'project dates', 'project period', 'project duration', 'duration', 'dates'] },
+  { label: '项目描述', category: '项目经历', aliases: ['项目描述', '项目简介', '项目介绍', '项目背景', '项目概述', '背景', 'project description', 'description', 'project overview', 'overview', 'background'], multiline: true },
+  { label: '职责内工作内容', category: '项目经历', aliases: ['职责内工作内容', '工作内容', '具体工作', '主要工作', '个人工作', '负责内容', '职责内容', '技术实现', '项目工作', '个人贡献', '主要贡献', '工作职责', 'my contributions', 'contributions', 'implementation', 'tasks', 'work performed'], multiline: true },
+  { label: '产出或结果', category: '项目经历', aliases: ['产出或结果', '产出', '结果', '项目成果', '项目结果', '项目产出', '项目业绩', '工作成果', '成果', '业绩', '成效', 'outcomes', 'outcome', 'results', 'result', 'achievements', 'deliverables', 'impact'], multiline: true },
   { label: '专业技能', category: '技能证书', aliases: ['技能', '专业技能', '技术栈', 'skills', 'technical skills', 'tech stack'], multiline: true },
   { label: '证书奖项', category: '技能证书', aliases: ['证书奖项', '荣誉奖项', '资格证书', 'certifications', 'certificates', 'awards'], multiline: true },
 ];
 
-export function definitionFor(label: string): Definition | undefined {
+export function definitionFor(label: string, context = ''): Definition | undefined {
   const key = normalize(label);
-  return definitions.find(d => d.aliases.some(a => normalize(a) === key) || normalize(d.label) === key);
+  const matches = definitions.filter(d => d.aliases.some(a => normalize(a) === key) || normalize(d.label) === key);
+  return matches.find(d => contextKey(context) && contextKey(d.category) === contextKey(context)) ?? matches[0];
 }
 
 export function cleanLabel(text: string): string {

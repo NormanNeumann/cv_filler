@@ -1,5 +1,11 @@
-export const categories = ['基本信息', '个人简介', '教育经历', '工作经历', '项目经历', '技能证书', '其他资料', '问答记忆'] as const;
+export const categories = ['基本信息', '个人简介', '教育经历', '工作经历', '实习经历', '项目经历', '技能证书', '其他资料', '问答记忆'] as const;
 export type Category = typeof categories[number];
+export interface ItemGroup {
+  id: string;
+  kind: 'education' | 'project';
+  name: string;
+  index: number;
+}
 export interface ProfileItem {
   id: string;
   label: string;
@@ -8,6 +14,7 @@ export interface ProfileItem {
   aliases: string[];
   source: 'manual' | 'pdf' | 'memory';
   updatedAt: string;
+  group?: ItemGroup;
 }
 export interface Memory {
   signature: string;

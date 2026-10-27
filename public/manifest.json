@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "简历匣 · Resume Pocket",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "本地解析 PDF 简历，管理可编辑资料，识别并填写求职表单，记住新问题的答案。",
   "minimum_chrome_version": "140",
   "permissions": ["activeTab", "scripting", "storage", "sidePanel"],

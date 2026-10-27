@@ -16,8 +16,8 @@ describe('PDF 文本归类', () => {
     const result = parseResume('林知夏\n邮箱: lin@example.com | 手机: 13800138000\n上海\n个人简介\n喜欢设计和编程。\n教育背景\n同济大学 软件工程\n工作经历\n某公司\n负责产品开发\nProjects\nOpen source app\n技能\nTypeScript / React');
     const get = (label: string) => result.find(i => i.label === label)?.value;
     expect(get('姓名')).toBe('林知夏'); expect(get('电子邮箱')).toBe('lin@example.com'); expect(get('手机号码')).toBe('13800138000');
-    expect(get('个人简介')).toBe('喜欢设计和编程。'); expect(get('教育经历')).toContain('同济大学'); expect(get('工作经历')).toContain('负责产品开发');
-    expect(get('项目经历')).toBe('Open source app'); expect(get('专业技能')).toBe('TypeScript / React'); expect(get('待整理文本')).toBe('上海');
+    expect(get('个人简介')).toBe('喜欢设计和编程。'); expect(get('毕业院校')).toBe('同济大学'); expect(get('工作经历')).toContain('负责产品开发');
+    expect(get('项目名称')).toBe('Open source app'); expect(get('专业技能')).toBe('TypeScript / React'); expect(get('待整理文本')).toBe('上海');
   });
   it('不会把简历标题认作姓名，也不从经历段落猜公司和职位', () => {
     const result = parseResume('个人简历\n工作经历\n上海科技有限公司 软件工程师');

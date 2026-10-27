@@ -9,9 +9,17 @@ export function validateStore(data: unknown): Store {
   const s = data as Store;
   if (s.version !== 1 || !Array.isArray(s.items) || !Array.isArray(s.memories) || typeof s.updatedAt !== 'string' || s.items.length > 1000 || s.memories.length > 5000) throw new Error('不支持此备份版本，或记录数量超出限制');
   const ids = new Set<string>();
+  const groups = new Map<string, string>();
   for (const item of s.items) {
     if (!item || typeof item.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(item.id) || ids.has(item.id) || typeof item.label !== 'string' || !item.label.trim() || item.label.length > 160 || typeof item.value !== 'string' || item.value.length > 100000 || !categories.includes(item.category) || !['manual', 'pdf', 'memory'].includes(item.source) || typeof item.updatedAt !== 'string' || !Array.isArray(item.aliases) || item.aliases.length > 100 || !item.aliases.every(a => typeof a === 'string' && a.length <= 160)) throw new Error('资料记录格式无效');
     ids.add(item.id);
+    if (item.group !== undefined) {
+      const g = item.group;
+      if (!g || typeof g.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(g.id) || !['education', 'project'].includes(g.kind) || typeof g.name !== 'string' || !g.name.trim() || g.name.length > 160 || !Number.isInteger(g.index) || g.index < 1 || g.index > 1000 || item.category !== (g.kind === 'project' ? '项目经历' : '教育经历')) throw new Error('经历分组格式无效');
+      const description = JSON.stringify([g.kind, g.name, g.index]);
+      if (groups.has(g.id) && groups.get(g.id) !== description) throw new Error('同一经历分组的信息不一致');
+      groups.set(g.id, description);
+    }
   }
   const signatures = new Set<string>();
   for (const m of s.memories) {
@@ -21,7 +29,7 @@ export function validateStore(data: unknown): Store {
   // Whitelist data properties, including imports from untrusted JSON.
   return {
     version: 1, updatedAt: s.updatedAt,
-    items: s.items.map(i => ({ id: i.id, label: i.label, value: i.value, category: i.category, aliases: [...i.aliases], source: i.source, updatedAt: i.updatedAt })),
+    items: s.items.map(i => ({ id: i.id, label: i.label, value: i.value, category: i.category, aliases: [...i.aliases], source: i.source, updatedAt: i.updatedAt, ...(i.group ? { group: { id: i.group.id, kind: i.group.kind, name: i.group.name, index: i.group.index } } : {}) })),
     memories: s.memories.map(m => ({ signature: m.signature, itemId: m.itemId })),
   };
 }
@@ -45,6 +53,8 @@ export function rememberAnswers(store: Store, drafts: FieldDraft[]): Store {
   const next = structuredClone(store);
   for (const draft of drafts) {
     if (!draft.remember || !draft.value.trim() || draft.field.repeated || draft.field.label === '未命名字段') continue;
+    // A choice from a specific project/school must not become a global answer for all entries.
+    if (next.items.some(i => i.id === draft.itemId && i.group)) continue;
     const existing = next.items.find(i => i.id === draft.itemId && i.value === draft.value);
     const oldMemory = next.memories.find(m => m.signature === draft.field.signature);
     const oldItem = next.items.find(i => i.id === oldMemory?.itemId && i.source === 'memory');

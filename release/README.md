@@ -1,6 +1,8 @@
-# V1 安装包
+# 安装包
 
-下载 `resume-pocket-v0.1.0.zip` 并解压。在 Chrome 140+ 打开 `chrome://extensions`，开启“开发者模式”，点击“加载已解压的扩展程序”，选择解压后直接包含 `manifest.json` 的文件夹。
+当前版本为 `resume-pocket-v0.2.0.zip`。下载并解压，在 Chrome 140+ 打开 `chrome://extensions`，开启“开发者模式”，点击“加载已解压的扩展程序”，选择解压后直接包含 `manifest.json` 的文件夹。
+
+更新现有插件时，先备份资料，再覆盖原加载目录内的文件并点击“重新加载”。保持目录路径，不要卸载。重新导入 PDF 才会应用新版分类；旧记录请核对后手动整理。`resume-pocket-v0.1.0.zip` 保留为历史版本。
 
 包内包含所需的 PDF Worker、CMap 和标准字体，无需联网下载依赖。完整功能与限制见项目根目录的 README。
 

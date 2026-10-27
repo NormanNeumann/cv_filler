@@ -4,12 +4,12 @@ import type { Match, PageField, ProfileItem, Store } from './types';
 export function matchField(field: PageField, store: Store): Match | undefined {
   if (field.kind === 'unsupported' || field.repeated || field.label === '未命名字段') return;
   const remembered = store.memories.find(m => m.signature === field.signature);
-  if (remembered && store.items.some(i => i.id === remembered.itemId && i.value.trim())) {
+  if (remembered && store.items.some(i => i.id === remembered.itemId && i.value.trim() && !i.group)) {
     return { itemId: remembered.itemId, confidence: 'memory', reason: '已记住这个问题' };
   }
   const keys = [field.label, ...field.hints].map(normalize).filter(Boolean);
-  const labelDefinition = definitionFor(field.label);
-  const fieldDefinition = labelDefinition ?? field.hints.map(definitionFor).find(Boolean);
+  const labelDefinition = definitionFor(field.label, field.context);
+  const fieldDefinition = labelDefinition ?? field.hints.map(hint => definitionFor(hint, field.context)).find(Boolean);
   const section = contextKey(field.context);
   const candidates = store.items.filter(i => i.value.trim()).map(item => {
     if (item.source === 'memory') {
@@ -26,6 +26,7 @@ export function matchField(field: PageField, store: Store): Match | undefined {
     // Do not put a whole experience paragraph into a school/company/title input.
     if (itemDefinition?.multiline && field.kind !== 'multiline') score = 0;
     if (section && item.category !== '基本信息' && contextKey(item.category) && contextKey(item.category) !== section) score = 0;
+    if (item.group?.kind === 'project' && !section && !/项目|project/i.test(field.label)) score = 0;
     return { item, score };
   }).filter(c => c.score > 0).sort((a, b) => b.score - a.score);
   if (!candidates.length || candidates[0].score === candidates[1]?.score) return;

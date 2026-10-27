@@ -3,7 +3,7 @@ import { categories, type Category, type FieldDraft, type ProfileItem, type Scan
 import { emptyStore, inExtension, loadStore, rememberAnswers, saveStore, validateStore } from './storage';
 import { compatibleValue, matchField, sampleItems } from './matcher';
 import { parseResume } from './parser';
-import { definitionFor } from './schema';
+import { groupTitle, itemCaption, mergeImportedItems, refreshGroupNames } from './profile';
 import { scanPage, fillPage, undoPage } from './bridge';
 
 const e = (s: unknown): string => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -68,12 +68,13 @@ function fieldView(d: FieldDraft): string {
   const f = d.field;
   const known = Boolean(d.match);
   const unsupported = f.kind === 'unsupported';
-  const oneTimeOnly = f.repeated || f.label === '未命名字段';
+  const boundGroup = store.items.find(i => i.id === d.itemId)?.group;
+  const oneTimeOnly = f.repeated || f.label === '未命名字段' || Boolean(boundGroup);
   const selectValue = compatibleValue(f, d.value).value;
   const input = f.kind === 'select' ? `<select class="answer-input" data-field="${f.id}" data-action="value" aria-label="${e(f.label)}的答案"><option value="">请选择答案</option>${(f.options ?? []).filter(o => o.value).map(o => `<option value="${e(o.value)}" ${selectValue === o.value || d.value === o.value ? 'selected' : ''} ${o.disabled ? 'disabled' : ''}>${e(o.label)}</option>`).join('')}</select>` : `<textarea class="answer-input" data-field="${f.id}" data-action="value" aria-label="${e(f.label)}的答案" rows="${f.kind === 'multiline' ? '3' : '1'}" placeholder="${f.kind === 'date' ? 'YYYY-MM-DD' : f.kind === 'month' ? 'YYYY-MM' : '输入一次，下次直接用'}" ${unsupported ? 'disabled' : ''}>${e(d.value)}</textarea>`;
   return `<article class="field-card ${known ? 'matched' : 'new'} ${unsupported ? 'unsupported' : ''}" data-card="${f.id}"><div class="field-heading"><label class="field-label"><input type="checkbox" data-action="select-field" data-field="${f.id}" ${d.selected ? 'checked' : ''} ${unsupported ? 'disabled' : ''}><strong>${e(f.label)}</strong>${f.required ? '<span class="required">*</span>' : ''}</label><span class="field-badge ${d.outcome?.ok ? 'success' : known ? 'known' : ''}">${d.outcome?.ok ? `${icon('check')} 已填充` : known ? `${icon( d.match!.confidence === 'memory' ? 'clock' : 'check')} ${d.match!.confidence === 'memory' ? '已记住' : '已匹配'}` : unsupported ? '需手动填写' : '待补充'}</span></div>
     <div class="field-meta">${e(typeLabel(d))}${f.context ? ` · ${e(f.context)}` : ''}${f.repeated ? ' · 存在同名字段，请逐项选择' : ''}</div>
-    ${unsupported ? '<p class="scan-note">该网站使用自定义控件，请直接在网页操作。</p>' : `<select class="binding-select" data-action="bind" data-field="${f.id}" aria-label="为${e(f.label)}选择资料"><option value="">手动输入答案</option>${store.items.map(i => `<option value="${i.id}" ${d.itemId === i.id ? 'selected' : ''}>${e(i.category)} / ${e(i.label)}</option>`).join('')}</select>${input}<div class="field-bottom">${oneTimeOnly ? `<span>${f.repeated ? '同名字段本次填写，不建立通用记忆' : '字段缺少名称，仅本次填写'}</span>` : `<label><input type="checkbox" data-action="remember" data-field="${f.id}" ${d.remember ? 'checked' : ''}> 记住答案</label>`}${f.currentValue ? '<span>网页已有内容</span>' : !oneTimeOnly ? `<span>${known ? e(d.match!.reason) : '下次遇到自动匹配'}</span>` : ''}</div>`}
+    ${unsupported ? '<p class="scan-note">该网站使用自定义控件，请直接在网页操作。</p>' : `<select class="binding-select" data-action="bind" data-field="${f.id}" aria-label="为${e(f.label)}选择资料"><option value="">手动输入答案</option>${store.items.map(i => `<option value="${i.id}" ${d.itemId === i.id ? 'selected' : ''}>${e(itemCaption(i))}</option>`).join('')}</select>${input}<div class="field-bottom">${oneTimeOnly ? `<span>${boundGroup ? '按所属经历选择，不建立通用问答记忆' : f.repeated ? '同名字段本次填写，不建立通用记忆' : '字段缺少名称，仅本次填写'}</span>` : `<label><input type="checkbox" data-action="remember" data-field="${f.id}" ${d.remember ? 'checked' : ''}> 记住答案</label>`}${f.currentValue ? '<span>网页已有内容</span>' : !oneTimeOnly ? `<span>${known ? e(d.match!.reason) : '下次遇到自动匹配'}</span>` : ''}</div>`}
     ${d.outcome && !d.outcome.ok ? `<p class="field-error">${e(d.outcome.reason)}</p>` : ''}</article>`;
 }
 
@@ -93,7 +94,7 @@ function updateFooter() {
 }
 
 function profileView(): string {
-  const list = store.items.filter(i => (activeCategory === '全部' || i.category === activeCategory) && `${i.label} ${i.value}`.toLowerCase().includes(filter.toLowerCase()));
+  const list = store.items.filter(i => (activeCategory === '全部' || i.category === activeCategory) && `${i.label} ${i.value} ${i.group?.name ?? ''}`.toLowerCase().includes(filter.toLowerCase()));
   return `<section class="profile-intro"><div class="eyebrow">YOUR STORY, IN ONE PLACE.</div><div class="title-row"><h1>我的资料<span class="accent-dot">.</span></h1><button class="btn small primary" data-action="add">${icon('plus')} 添加</button></div><p>修改一次，下次申请用上最新的你。</p></section>
     <div class="profile-toolbar"><button class="btn secondary" data-action="import">${icon('upload')} 导入简历</button><button class="btn secondary" data-action="export">${icon('download')} 备份</button><button class="icon-button" data-action="restore" title="恢复 JSON 备份" aria-label="恢复 JSON 备份">${icon('undo')}</button></div>
     <input class="search-input" type="search" placeholder="搜索姓名、技能、记住的答案…" aria-label="搜索资料" data-action="search" value="${e(filter)}">
@@ -103,7 +104,7 @@ function profileView(): string {
 }
 
 function itemView(i: ProfileItem): string {
-  return `<article class="profile-item"><div class="profile-item-title"><span class="category-label">${e(i.category)}</span><div class="item-actions"><button class="icon-button" data-action="edit" data-id="${i.id}" aria-label="编辑${e(i.label)}">${icon('edit')}</button><button class="icon-button danger" data-action="delete" data-id="${i.id}" aria-label="删除${e(i.label)}">${icon('trash')}</button></div></div><h3>${e(i.label)}</h3><p>${e(i.value)}</p><span class="item-source">${i.source === 'pdf' ? '从 PDF 整理' : i.source === 'memory' ? '来自问答记忆' : '手动维护'}${i.aliases.length ? ` · ${e(i.aliases.join('、'))}` : ''}</span></article>`;
+  return `<article class="profile-item"><div class="profile-item-title"><span class="category-label">${e(i.category)}</span><div class="item-actions"><button class="icon-button" data-action="edit" data-id="${i.id}" aria-label="编辑${e(i.label)}">${icon('edit')}</button><button class="icon-button danger" data-action="delete" data-id="${i.id}" aria-label="删除${e(i.label)}">${icon('trash')}</button></div></div>${i.group ? `<p class="group-label">${e(groupTitle(i.group))}</p>` : ''}<h3>${e(i.label)}</h3><p>${e(i.value)}</p><span class="item-source">${i.source === 'pdf' ? '从 PDF 整理' : i.source === 'memory' ? '来自问答记忆' : '手动维护'}${i.aliases.length ? ` · ${e(i.aliases.join('、'))}` : ''}</span></article>`;
 }
 
 function helpView(): string {
@@ -116,7 +117,7 @@ function helpView(): string {
 
 function dialogs(): string {
   return `<dialog id="edit-dialog"><form id="item-form"><div class="dialog-heading"><h2 id="edit-title">添加资料</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="关闭">${icon('close')}</button></div><input name="id" type="hidden"><label class="form-label">字段名称<input name="label" required maxlength="160" placeholder="如：期望薪资、可到岗时间"></label><label class="form-label">分类<select name="category">${categories.map(c => `<option>${c}</option>`).join('')}</select></label><label class="form-label">内容<textarea name="value" required rows="6" maxlength="100000" placeholder="写下这项资料的内容…"></textarea></label><label class="form-label">其他叫法 <span>可选，用逗号分隔</span><input name="aliases" placeholder="如：期望薪酬, expected salary"></label><p class="dialog-note">其他叫法帮助不同网站上的同义字段找到这条资料。</p><button class="btn primary wide" type="submit">保存资料 ${icon('check')}</button></form></dialog>
-    <dialog id="import-dialog"><div class="dialog-heading"><div><div class="eyebrow">MAKE YOUR RESUME REUSABLE.</div><h2>导入你的简历</h2></div><button class="icon-button" data-action="close-dialog" aria-label="关闭">${icon('close')}</button></div><div id="import-source"><label class="dropzone" id="dropzone">${icon('upload')}<strong>选择 PDF，或拖到这里</strong><span>文字版 PDF · 最大 20 MB · 最多 30 页</span><input id="pdf-input" type="file" accept=".pdf,application/pdf"></label><div class="divider"><span>或者</span></div><label class="form-label">粘贴简历文本<textarea id="paste-text" rows="7" placeholder="粘贴简历内容，自动识别基本信息、教育、工作、项目、技能…"></textarea></label><button class="btn primary wide" data-action="parse-text">整理文本 ${icon('arrow')}</button></div><p id="import-status" role="status" aria-live="polite"></p><div id="import-review" hidden></div></dialog>
+    <dialog id="import-dialog"><div class="dialog-heading"><div><div class="eyebrow">MAKE YOUR RESUME REUSABLE.</div><h2>导入你的简历</h2></div><button class="icon-button" data-action="close-dialog" aria-label="关闭">${icon('close')}</button></div><div id="import-source"><label class="dropzone" id="dropzone">${icon('upload')}<strong>选择 PDF，或拖到这里</strong><span>文字版 PDF · 最大 20 MB · 最多 30 页</span><input id="pdf-input" type="file" accept=".pdf,application/pdf"></label><div class="divider"><span>或者</span></div><label class="form-label">粘贴简历文本<textarea id="paste-text" rows="7" placeholder="粘贴简历内容，自动识别基本信息、教育、工作、实习及项目六类字段…"></textarea></label><button class="btn primary wide" data-action="parse-text">整理文本 ${icon('arrow')}</button></div><p id="import-status" role="status" aria-live="polite"></p><div id="import-review" hidden></div></dialog>
     <dialog id="confirm-dialog"><h2 id="confirm-title"></h2><p id="confirm-message"></p><div class="confirm-actions"><button class="btn secondary" data-action="close-dialog">取消</button><button class="btn danger-btn" id="confirm-button">确认</button></div></dialog>
     <input type="file" id="backup-input" accept=".json,application/json" hidden>`;
 }
@@ -157,7 +158,7 @@ async function performScan() {
   drafts = result.fields.map(field => {
     const match = matchField(field, store);
     const item = store.items.find(i => i.id === match?.itemId);
-    return { field, itemId: item?.id ?? '', value: item?.value ?? '', selected: Boolean(item?.value && !field.currentValue.trim() && compatibleValue(field, item.value).value !== undefined), remember: !field.repeated && field.label !== '未命名字段' && field.kind !== 'unsupported', match };
+    return { field, itemId: item?.id ?? '', value: item?.value ?? '', selected: Boolean(item?.value && !field.currentValue.trim() && compatibleValue(field, item.value).value !== undefined), remember: !item?.group && !field.repeated && field.label !== '未命名字段' && field.kind !== 'unsupported', match };
   });
   render();
 }
@@ -190,8 +191,15 @@ function showImportReview() {
   const node = document.querySelector<HTMLElement>('#import-review')!;
   document.querySelector<HTMLElement>('#import-source')!.hidden = true;
   node.hidden = false;
-  document.querySelector('#import-status')!.textContent = `${importFilename || '粘贴文本'} · 整理出 ${importItems.length} 条资料，请检查后保存。`;
-  node.innerHTML = `${importItems.map(i => `<article class="import-draft" data-import="${i.id}"><div class="import-row"><label><input type="checkbox" data-import-prop="selected" checked> 保存此项</label><select data-import-prop="category" aria-label="资料分类">${categories.filter(c => c !== '问答记忆').map(c => `<option ${c === i.category ? 'selected' : ''}>${c}</option>`).join('')}</select></div><input data-import-prop="label" aria-label="资料名称" maxlength="160" value="${e(i.label)}"><textarea data-import-prop="value" aria-label="${e(i.label)}的内容" rows="${i.value.length > 90 ? 5 : 2}">${e(i.value)}</textarea></article>`).join('')}<details class="raw-text"><summary>查看提取的原始文本</summary><pre>${e(importedText)}</pre></details><p class="dialog-note">仅新增勾选内容，完全相同的记录会去重。已有资料不会被覆盖。双栏排版请特别核对阅读顺序。</p><button class="btn primary wide" data-action="save-import">保存选中资料 ${icon('check')}</button><button class="text-button" data-action="reset-import">重新导入</button>`;
+  const missing = importItems.filter(i => !i.value.trim()).length;
+  document.querySelector('#import-status')!.textContent = `${importFilename || '粘贴文本'} · 识别 ${importItems.length - missing} 条资料${missing ? `，${missing} 个项目字段待补充` : ''}，请检查后保存。`;
+  const groups = new Map<string, ProfileItem[]>();
+  for (const item of importItems) { const key = item.group?.id ?? item.id; groups.set(key, [...(groups.get(key) ?? []), item]); }
+  node.innerHTML = `${Array.from(groups.values()).map(items => `${items[0].group ? `<section class="import-group" data-import-group="${items[0].group.id}"><h3>${e(groupTitle(items[0].group))}</h3>` : ''}${items.map(importDraftView).join('')}${items[0].group ? '</section>' : ''}`).join('')}<details class="raw-text"><summary>查看提取的原始文本</summary><pre>${e(importedText)}</pre></details><p class="dialog-note">空白项目字段表示简历未提供信息，可补充后保存。仅新增勾选内容，完全相同的记录会去重。旧版错误分类的记录请在重新导入后检查并删除；不会自动覆盖。</p><button class="btn primary wide" data-action="save-import">保存选中资料 ${icon('check')}</button><button class="text-button" data-action="reset-import">重新导入</button>`;
+}
+
+function importDraftView(i: ProfileItem): string {
+  return `<article class="import-draft" data-import="${i.id}"><div class="import-row"><label><input type="checkbox" data-import-prop="selected" ${i.value.trim() ? 'checked' : ''}> 保存此项</label><select data-import-prop="category" aria-label="资料分类">${categories.filter(c => c !== '问答记忆').map(c => `<option ${c === i.category ? 'selected' : ''}>${c}</option>`).join('')}</select></div><input data-import-prop="label" aria-label="资料名称" maxlength="160" value="${e(i.label)}"><textarea data-import-prop="value" aria-label="${e(i.label)}的内容" placeholder="简历未提供此项，可在此补充" rows="${i.value.length > 90 ? 5 : 2}">${e(i.value)}</textarea></article>`;
 }
 
 async function readPdf(file: File) {
@@ -261,10 +269,9 @@ document.addEventListener('click', event => {
       });
       if (selected.some(i => !i.label || !i.value)) throw new Error('选中的资料名称和内容不能为空');
       if (!selected.length) throw new Error('请至少选择一条资料');
-      const additions: ProfileItem[] = [];
-      for (const item of selected) if (![...store.items, ...additions].some(j => item.label === j.label && item.value === j.value)) additions.push(item);
-      await commit({ ...store, items: [...store.items, ...additions] });
-      closeDialog(); tab = 'profile'; activeCategory = '全部'; filter = ''; invalidateMatches(); render(); toast(`已新增 ${additions.length} 条资料，跳过 ${selected.length - additions.length} 条重复记录`);
+      const merged = mergeImportedItems(store.items, selected);
+      await commit({ ...store, items: merged.items });
+      closeDialog(); tab = 'profile'; activeCategory = '全部'; filter = ''; invalidateMatches(); render(); toast(`已新增 ${merged.added} 条资料，跳过 ${selected.length - merged.added} 条重复记录`);
     }
   });
 });
@@ -277,6 +284,10 @@ function invalidateMatches() {
 document.addEventListener('input', event => {
   const input = event.target as HTMLInputElement;
   const action = input.dataset.action;
+  if (input.dataset.importProp === 'value') {
+    const checkbox = input.closest('[data-import]')?.querySelector<HTMLInputElement>('[data-import-prop="selected"]');
+    if (checkbox) checkbox.checked = Boolean(input.value.trim());
+  }
   if (action === 'search') {
     filter = input.value;
     const start = input.selectionStart;
@@ -317,6 +328,7 @@ document.addEventListener('change', event => {
   if (input.dataset.action === 'bind') {
     const item = store.items.find(i => i.id === input.value);
     draft.itemId = item?.id ?? ''; draft.value = item?.value ?? ''; draft.match = undefined; draft.outcome = undefined;
+    if (item?.group) draft.remember = false;
     draft.selected = Boolean(item?.value && (!draft.field.currentValue.trim() || overwrite) && compatibleValue(draft.field, item.value).value !== undefined);
     render();
   }
@@ -334,9 +346,10 @@ document.addEventListener('submit', event => {
     const item: ProfileItem = {
       id: id || crypto.randomUUID(), label, value: String(form.get('value')).trim(), category: String(form.get('category')) as Category,
       aliases: String(form.get('aliases')).split(/[,，、]/).map(s => s.trim()).filter(Boolean), source: old?.source ?? 'manual', updatedAt: new Date().toISOString(),
+      ...(old?.group ? { group: { ...old.group } } : {}),
     };
     if (!item.label || !item.value) throw new Error('字段名称和内容不能为空');
-    await commit({ ...store, items: old ? store.items.map(i => i.id === id ? item : i) : [...store.items, item] });
+    await commit({ ...store, items: refreshGroupNames(old ? store.items.map(i => i.id === id ? item : i) : [...store.items, item]) });
     closeDialog(); invalidateMatches(); render(); toast('资料已保存');
   });
 });

@@ -29,8 +29,9 @@ const cid = chinesePdf.context.register(chinesePdf.context.obj({
 }));
 const cjkFont = chinesePdf.context.register(chinesePdf.context.obj({ Type: 'Font', Subtype: 'Type0', BaseFont: 'STSong-Light', Encoding: 'UniGB-UCS2-H', DescendantFonts: [cid] }));
 chinesePage.node.setFontDictionary(PDFName.of('CJK'), cjkFont);
-const chineseLines = ['林知夏', '姓名：林知夏', '教育经历', '同济大学 软件工程', '工作经历', '负责产品体验与前端开发', '专业技能', '交互设计与软件开发'];
-const stream = chineseLines.map((s, i) => `BT /CJK 12 Tf 50 ${780 - i * 30} Td <${Array.from(s).map(c => c.charCodeAt(0).toString(16).padStart(4, '0')).join('')}> Tj ET`).join('\n');
+const experienceFixture = await readFile(path.join(root, 'tests/fixtures/experience-resume.txt'), 'utf8');
+const chineseLines = experienceFixture.trim().split(/\r?\n/);
+const stream = chineseLines.map((s, i) => `BT /CJK 12 Tf 50 ${800 - i * 18} Td <${Array.from(s).map(c => c.charCodeAt(0).toString(16).padStart(4, '0')).join('')}> Tj ET`).join('\n');
 chinesePage.node.addContentStream(chinesePdf.context.register(chinesePdf.context.flateStream(stream)));
 const chineseFile = path.join(results, 'chinese-resume-fixture.pdf');
 await writeFile(chineseFile, await chinesePdf.save());
@@ -96,6 +97,27 @@ try {
   assert.ok(await page.locator('[data-import-prop=value]').filter({ hasText: 'alex@example.com' }).count());
   await page.getByRole('button', { name: '保存选中资料' }).click();
   await page.getByText('Alex Chen', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '导入简历', exact: true }).click();
+  await page.locator('#paste-text').fill(experienceFixture + '\n项目经历\n项目名称：信息不完整项目\n项目描述：需要手动补充时间。');
+  await page.getByRole('button', { name: '整理文本', exact: true }).click();
+  const previewProjectGroups = page.locator('.import-group').filter({ has: page.locator('h3', { hasText: /^项目 / }) });
+  assert.equal(await previewProjectGroups.count(), 3);
+  const incompleteGroup = previewProjectGroups.last();
+  assert.equal(await incompleteGroup.locator('[data-import]').count(), 6);
+  assert.equal(await incompleteGroup.locator('[data-import-prop=selected]:checked').count(), 2);
+  await incompleteGroup.getByLabel('项目时间的内容').fill('2026.09 - 2026.10');
+  assert.equal(await incompleteGroup.locator('[data-import-prop=selected]:checked').count(), 3);
+  await incompleteGroup.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(results, 'structured-import.png'), fullPage: true });
+  await page.getByRole('button', { name: '保存选中资料' }).click();
+  const groupedPreview = await page.evaluate(() => JSON.parse(localStorage.getItem('resume-pocket-v1')));
+  assert.equal(groupedPreview.items.filter(i => i.group?.kind === 'project').length, 15);
+  assert.equal(groupedPreview.items.filter(i => i.category === '实习经历').length, 1);
+  await page.getByRole('button', { name: '导入简历', exact: true }).click();
+  await page.locator('#paste-text').fill(experienceFixture);
+  await page.getByRole('button', { name: '整理文本', exact: true }).click();
+  await page.getByRole('button', { name: '保存选中资料' }).click();
+  await page.getByText(/^已新增 0 条资料/).waitFor();
   assert.equal(errors.length, 0, `preview errors: ${errors.join('; ')}`);
   console.log('PASS: preview import, native select/date fill, persistent Q&A memory, editing, undo, backup and restore');
 
@@ -136,6 +158,9 @@ try {
   await panel.locator('#pdf-input').setInputFiles(chineseFile);
   await panel.getByRole('button', { name: '保存选中资料' }).waitFor({ timeout: 30000 });
   assert.ok((await panel.locator('[data-import-prop=value]').allTextContents()).some(text => text.includes('同济大学')));
+  const pdfGroups = panel.locator('.import-group').filter({ has: panel.locator('h3', { hasText: /^项目 / }) });
+  assert.equal(await pdfGroups.count(), 2);
+  assert.equal(await pdfGroups.first().locator('[data-import]').count(), 6);
   await panel.getByRole('button', { name: '关闭', exact: true }).click();
   await panel.getByRole('button', { name: '导入简历', exact: true }).click();
   await panel.locator('#pdf-input').setInputFiles(pdfFile);
@@ -167,10 +192,39 @@ try {
   await site.reload();
   await panel.locator('[data-action=scan]').evaluate(button => button.click());
   await panel.locator('[data-card]').filter({ has: panel.locator('.field-label', { hasText: '期望薪资' }) }).getByText('已记住', { exact: true }).waitFor();
+  await panel.getByRole('button', { name: /^我的资料/ }).click();
+  await panel.getByRole('button', { name: '导入简历', exact: true }).click();
+  await panel.locator('#pdf-input').setInputFiles(chineseFile);
+  await panel.getByRole('button', { name: '保存选中资料' }).waitFor({ timeout: 30000 });
+  await panel.getByRole('button', { name: '保存选中资料' }).click();
+  const structured = await worker.evaluate(async () => (await chrome.storage.local.get('resume-pocket-v1'))['resume-pocket-v1']);
+  assert.equal(structured.items.filter(i => i.group?.kind === 'project').length, 12);
+  assert.ok(structured.items.filter(i => i.category === '教育经历').every(i => !/有限公司|负责|预约/.test(i.value)));
+  await panel.getByRole('button', { name: '网页填充', exact: true }).click();
+  await site.goto('http://127.0.0.1:4173/demo/project-form.html');
+  await site.bringToFront();
+  await panel.locator('[data-action=scan]').evaluate(button => button.click());
+  await panel.getByLabel('项目名称的答案').waitFor();
+  assert.equal(await panel.locator('[data-action=select-field]:checked').count(), 0, 'multiple projects require an explicit choice');
+  const firstProject = structured.items.filter(i => i.group?.kind === 'project' && i.group.index === 1);
+  for (const item of firstProject) {
+    const webLabel = item.label === '项目职责' ? '职责' : item.label;
+    await panel.getByLabel(`为${webLabel}选择资料`, { exact: true }).selectOption(item.id);
+  }
+  await panel.locator('#fill-button').evaluate(button => button.click());
+  await panel.getByText('已填充 6 项', { exact: true }).waitFor();
+  assert.equal(await site.locator('[name=projectName]').inputValue(), '简历匣');
+  assert.equal(await site.locator('[name=projectRole]').inputValue(), '前端负责人');
+  assert.ok((await site.locator('[name=projectDescription]').inputValue()).includes('在浏览器本地'));
+  assert.ok((await site.locator('[name=projectTasks]').inputValue()).includes('实现 PDF'));
+  assert.ok((await site.locator('[name=projectResults]').inputValue()).includes('60%'));
+  const afterProjectFill = await worker.evaluate(async () => (await chrome.storage.local.get('resume-pocket-v1'))['resume-pocket-v1']);
+  assert.equal(afterProjectFill.memories.filter(m => m.signature.startsWith('project|')).length, 0);
   await panel.screenshot({ path: path.join(results, 'extension-panel.png'), fullPage: true });
   assert.equal(errors.length, 0, `extension errors: ${errors.join('; ')}`);
   assert.equal(JSON.parse(await readFile(path.join(root, 'dist/manifest.json'), 'utf8')).host_permissions, undefined);
   console.log('PASS: exact production MV3 manifest, toolbar activeTab grant, Chinese/English PDF import with CSP, storage, content script and memory after navigation');
+  console.log('PASS: academic-only education, separate work/internship, per-project six-field review, blank-field editing, import deduplication and explicit grouped filling');
   console.log(`Screenshots: ${results}`);
 } catch (error) {
   if (currentPage && !currentPage.isClosed()) {
